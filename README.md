@@ -6,5 +6,5 @@ Dataset used is simulated based on a sample of Driver Monitoring Dataset ([DMD](
 
 The risk score of each instance used is set to emphasis risky physiological states and behaviors. Each instance of simulated data and its context/environment is assumed to be 1sec long. Number of frames per labeled instance from DMD is set to 50 per second, each instance being 1 sec long. 
 
-Assistant is trained using Angora free tier on Google Colab. Training dataset includes scenarios with higher risk_score, while testing dataset' scenarios are more realistic. 
+Assistant is trained using llama. Training dataset includes scenarios with higher risk_score, while testing dataset' scenarios are more realistic. 
 
