@@ -38,36 +38,9 @@ state_classification = {
     }
 }
 
-#csv_filename = "training_scenarios1_copy.csv"
-csv_filename = "testing_scenarios1_copy.csv"
-#output_file = "training_data_classified_new2.csv"
-output_file = "testing_data_classified_new2.csv"
-instruction = "Give driving advice based on the situation"
-scenarios_list = []
-
-def classify_behavior_old():
-    with open(csv_filename, "r", encoding="utf-8", newline="") as f_in, \
-        open(output_file, "w", encoding="utf-8", newline="") as f_out:
-        
-        reader = csv.DictReader(f_in)
-        fieldnames = reader.fieldnames + ["classification"]
-        writer = csv.DictWriter(f_out, fieldnames=fieldnames)
-        writer.writeheader()
-
-        for row in reader:
-            classification = "safe"
-
-            for col, mapping in state_classification.items():
-                if col in row and row[col] in mapping:
-                    classification = mapping[row[col]]
-                
-            row["classification"] = classification
-            scenarios_list.append(row) # each row is a dictionary
-            writer.writerow(row)
-            # break
-
 
 def classify_behavior(csv_filename, output_file):
+    scenarios_list = []
     with open(csv_filename, "r", encoding="utf-8", newline="") as f_in, \
          open(output_file, "w", encoding="utf-8", newline="") as f_out:
 
@@ -92,7 +65,8 @@ def classify_behavior(csv_filename, output_file):
             row["classification"] = ",".join(sorted(classifications))
             scenarios_list.append(row)
             writer.writerow(row)
-
+        print("saved as csv classified", output_file)
+    return scenarios_list
 
 def detect_drowsiness(scenario):
      # Detect drowsiness second 
@@ -120,7 +94,6 @@ def detect_high_distraction(scenario):
     return response
 
 def detect_high_speed(scenario):
-
     if scenario["traffic_density"] == "high":
         response = random.choice(["Be careful driving off the road, traffic is dense.", "Stay in your lane during traffic congestion."])
     
@@ -158,7 +131,6 @@ def detect_distraction(scenario):
     return response
 
 def detect_congestion(scenario):
-
     if scenario["traffic_density"] == "high" and scenario["road_type"] == "highway":
         response = "If you can't see car's mirror, they can't see you."
     if scenario["traffic_density"] == "high":
@@ -169,31 +141,49 @@ def detect_congestion(scenario):
     response = "Please look 10 to 15 seconds ahead."
     return response
 
-
+def clean_value(input_dict, default="unknown"):
+    #print("input.keys()", input_dict.keys())
+    for key in input_dict.keys():
+        #print("input_dict[key]", input_dict[key])
+        #print("key", key)
+        val = input_dict[key]
+        if isinstance(val, str) and val.strip().lower() == "na":
+            input_dict[key] = "unknown_value"
+            #print(f"Replaced '{key}' with:", input_dict[key])
+        else:
+            #print("pass")
+            pass
+    return input_dict
 
 def generate_advice(scenarios_list):
     ''' Advice based on priority risk. 
         De-escalate risk for each scenario. '''
     
-    general_input = "The driver is {driver_actions}, {gaze_on_road}, and using {hands_using_wheel} hand(s) on the wheel. Driver is {talking} and/or {yawning} and his eyes {eyes_state}.Weather is {weather}, traffic is {traffic_density}, and the car is {car_speed} speed limit on a {road_type} road. Behavior classification detected: {classification}."
-   
     results = []
+    general_input = "The driver is {driver_actions}, {gaze_on_road}, and using {hands_using_wheel} hand(s) on the wheel. Driver is {talking} and/or {yawning} and his eyes {eyes_state}.Weather is {weather}, traffic is {traffic_density}, and the car is {car_speed} speed limit on a {road_type} road. Behavior classification detected: {classification}."
     
     for scenario in scenarios_list:
-        input_text = general_input.format(
-            driver_actions=scenario["driver_actions"],
-            gaze_on_road=scenario["gaze_on_road"],
-            hands_using_wheel=scenario["hands_using_wheel"],
-            talking=scenario["talking"],
-            eyes_state=scenario["eyes_state"],
-            weather=scenario["weather"],
-            yawning=scenario["yawning"],
-            traffic_density=scenario["traffic_density"],
-            car_speed=scenario["car_speed"],
-            road_type=scenario["road_type"],
-            classification=scenario["classification"]
-            )
-    
+        #print(scenario)
+        input_dict = {
+            "driver_actions": scenario["driver_actions"],
+            "gaze_on_road": scenario["gaze_on_road"],
+            "hands_using_wheel": scenario["hands_using_wheel"],
+            "talking": scenario["talking"],
+            "eyes_state": scenario["eyes_state"],
+            "weather": scenario["weather"],
+            "yawning": scenario["yawning"],
+            "traffic_density": scenario["traffic_density"],
+            "car_speed": scenario["car_speed"],
+            "road_type": scenario["road_type"],
+            "classification": scenario["classification"]
+        }
+
+        #Remove NA from dictionary to avoid training model issues
+        input_dict = clean_value(input_dict, "unknown_value")
+        input_text  = general_input.format(**input_dict)
+        #break
+        #print("input_text", input_text)
+
         # Check for combined high-risk scenarios
         advice = []
 
@@ -201,8 +191,6 @@ def generate_advice(scenarios_list):
             advice1 = detect_high_speed(scenario)
             advice2 = detect_high_distraction(scenario)
             advice.extend([advice1, advice2])
-
-
 
         elif scenario["car_speed"] == "severe_over" and scenario["classification"] == "drowsiness,high_distraction":
             advice2 = "Distraction and drowsiness detected."
@@ -214,13 +202,10 @@ def generate_advice(scenarios_list):
             advice1 = detect_high_speed(scenario)
             advice.extend([advice1, advice2])
 
-
-
         elif scenario["car_speed"] == "severe_over" and scenario["classification"] == "distraction,drowsiness":
             advice1 = detect_high_speed(scenario)
             advice2 = detect_drowsiness(scenario)
             advice.extend([advice1, advice2])
-
 
         elif scenario["car_speed"] == "severe_over" and scenario["classification"] == "high_distraction":
             #advice.append("Stay focused and slow down — distractions at high speed are deadly.")
@@ -228,16 +213,12 @@ def generate_advice(scenarios_list):
             advice1 = detect_high_speed(scenario)
             advice.extend([advice1, advice2])
 
-        
-
         elif scenario["car_speed"] == "severe_over" and scenario["classification"] == "drowsiness":
             #advice.append("Slow down and take a rest if feeling drowsy.")
             advice1 = detect_high_speed(scenario)
             advice2 = detect_drowsiness(scenario)
             advice.extend([advice1, advice2])
 
-     
- 
         elif scenario["classification"] == "distraction,drowsiness,high_distraction":
             advice1 = detect_high_distraction(scenario)
             advice2 = detect_drowsiness(scenario)
@@ -248,7 +229,6 @@ def generate_advice(scenarios_list):
             advice2 = detect_drowsiness(scenario)
             advice.extend([advice1, advice2])
         
-
         elif scenario["classification"] == "distraction,high_distraction":
             advice1 = detect_high_distraction(scenario)
             advice2 = detect_distraction(scenario)
@@ -277,9 +257,8 @@ def generate_advice(scenarios_list):
             advice2 = detect_congestion(scenario)
             advice.extend([advice1, advice2])
 
-        else:
-            # Handle individual risks here
-
+        else: # Handle individual risks here
+            
             # over speeding 
             if scenario["car_speed"] == "severe_over":
                 advice = [detect_high_speed(scenario)]
@@ -333,10 +312,9 @@ def generate_advice(scenarios_list):
         advice_text = " ".join(advice)
 
         results.append({"input": input_text, "advice": advice_text})
-        
     return results
 
-def save_as_jsonl(data, output_filepath):
+def save_as_jsonl(instruction, data, output_filepath):
     with open(output_filepath, "w", encoding="utf-8") as f_out:
         for record in data:
             json_record = {
@@ -345,7 +323,7 @@ def save_as_jsonl(data, output_filepath):
                 "output": record["advice"]
             }
             f_out.write(json.dumps(json_record) + "\n")
-
+    print("saved as json l", output_filepath)
 
 def save_as_csv(data, output_filepath):
     # does not include instruction
@@ -354,19 +332,39 @@ def save_as_csv(data, output_filepath):
         writer.writeheader()
         for record in data:
             writer.writerow(record)
-
-
-
+    print("saved as csv", output_filepath)
 
 def main():
+    instruction = "Give driving advice based on the situation"
 
-    classify_behavior(csv_filename, output_file)
-    #print(scenarios_list)
-    #print(len(scenarios_list))
-    results = generate_advice(scenarios_list)
-    save_as_jsonl(results, "output_testing_advice.jsonl")
-    save_as_csv(results, "output_testing_advice.csv")
+    csv_training_filename = "training_scenarios_combined_unique.csv"
+    output_training_file = "training_scenarios_combined_unique_classified.csv"
+
+    scenarios_training_classified  = classify_behavior(csv_training_filename, output_training_file)
+    training_results = generate_advice(scenarios_training_classified)
+    random.shuffle(training_results)
+
+    save_as_csv(training_results, "output_training_advice_prefinal.csv")
+    save_as_jsonl(instruction, training_results, "output_testing_advice_prefinal.jsonl")
+
    
+    csv_testing_filename = "testing_scenarios_combined_unique.csv"
+    output_testing_file = "testing_scenarios_combined_unique_classified.csv"
+
+    scenarios_testing_classified = classify_behavior(csv_testing_filename, output_testing_file)
+    testing_results = generate_advice(scenarios_testing_classified)
+    random.shuffle(testing_results)
+
+    save_as_csv(testing_results, "output_testing_advice_prefinal.csv")
+    save_as_jsonl(instruction, testing_results, "output_testing_advice_prefinal.jsonl")
+
+    # check unique
+    # move 80 percent of testing data to training
+
+    print(f"New training set size: {len(training_results)}")
+    print(f"New testing set size: {len(testing_results)}")
+    #New training set size: 10168
+    #New testing set size: 9923
 
 if __name__ == "__main__":
     main()

@@ -2,8 +2,8 @@
 
 
 '''
-Focus is on detecting drowsiness and distraction
-Environment context is a contributin factor 
+    Focus is on detecting drowsiness and distraction
+    Environment context & speed are equally contributing factors
 
 '''
 

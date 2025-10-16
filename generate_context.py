@@ -1,5 +1,11 @@
 import random
 
+'''
+    Assign an external environment and car speed to each scenario.
+    Most environment factors are dependent on each other.
+
+'''
+
 
 state_mapping = {
    "driver_actions" : ["drinking", "radio", "reach_side", "reach_backseat", "safe_drive", "standstill_or_waiting", "texting_right", "texting_left", "hair_and_makeup", "change_gear", "phonecall_right", "phonecall_left", "unclassified"],

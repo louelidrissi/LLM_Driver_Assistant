@@ -1,8 +1,6 @@
 import random
 import csv
-
 import json
-
 import pandas as pd
 import numpy as np
 import glob
@@ -53,9 +51,13 @@ def combine_and_deduplicate_csvs(folder_path, output_path='combined_unique.csv',
     return unique_df
 
 
+def combine_training():
+    folder_path = "/Users/louelidrissi/LLM/training_dataset"
+    combine_and_deduplicate_csvs(folder_path, output_path='training_scenarios_combined_unique.csv', float_precision=3)
 
-folder_path = "/Users/louelidrissi/LLM/training_dataset"
-combine_and_deduplicate_csvs(folder_path, output_path='training_combined_unique.csv', float_precision=3)
+def combine_testing():
+    folder_path = "/Users/louelidrissi/LLM/testing_dataset"
+    combine_and_deduplicate_csvs(folder_path, output_path='testing_scenarios_combined_unique.csv', float_precision=3)
 
-folder_path = "/Users/louelidrissi/LLM/testing_dataset"
-combine_and_deduplicate_csvs(folder_path, output_path='testing_combined_unique.csv', float_precision=3)
+#combine_training()
+combine_testing()

@@ -6,6 +6,13 @@ from itertools import product
 from generate_context import add_env_description
 from generate_risk import add_risk_score
 
+
+'''
+    Simulate driving scenarios to create training and testing datasets.
+    Labels are created following a sample of Driving Monitoring Dataset (DMD) 
+
+'''
+
 state_mapping = {
    "driver_actions" : ["drinking", "radio", "reach_side", "reach_backseat", "safe_drive", "standstill_or_waiting", "texting_right", "texting_left", "hair_and_makeup", "change_gear", "phonecall_right", "phonecall_left", "unclassified"],
    "hands_using_wheel": ["both", "only_left", "only_right", "none"],
