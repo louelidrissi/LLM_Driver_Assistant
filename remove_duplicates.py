@@ -52,12 +52,12 @@ def combine_and_deduplicate_csvs(folder_path, output_path='combined_unique.csv',
 
 
 def combine_training():
-    folder_path = "/Users/louelidrissi/LLM/training_dataset"
-    combine_and_deduplicate_csvs(folder_path, output_path='training_scenarios_combined_unique.csv', float_precision=3)
+    folder_path = "/Users/louelidrissi/LLM/training_data"
+    combine_and_deduplicate_csvs(folder_path, output_path='training_dataset_corrected.csv', float_precision=3)
 
 def combine_testing():
-    folder_path = "/Users/louelidrissi/LLM/testing_dataset"
-    combine_and_deduplicate_csvs(folder_path, output_path='testing_scenarios_combined_unique.csv', float_precision=3)
+    folder_path = "/Users/louelidrissi/LLM/testing_data"
+    combine_and_deduplicate_csvs(folder_path, output_path='testing_dataset_corrected.csv', float_precision=3)
 
-#combine_training()
+combine_training()
 combine_testing()
