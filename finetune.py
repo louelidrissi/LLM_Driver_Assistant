@@ -35,6 +35,7 @@ def train(
     # model/data params
     base_model: str = "",  # the only required argument
     data_path: str = "yahma/alpaca-cleaned",
+    val_data_path: str = "",
     output_dir: str = "./lora-alpaca",
     # training hyperparams
     batch_size: int = 128,  # 32, 64, 128... . the lower, the noisier gradient would be
@@ -66,8 +67,9 @@ def train(
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         print(
             f"Training Alpaca-LoRA model with params:\n"
-            f"base_model: {base_model}\n"
+            f"base_model: {base_model}\n" 
             f"data_path: {data_path}\n"
+            f"val_data_path: {val_data_path}\n" # add test data path
             f"output_dir: {output_dir}\n"
             f"batch_size: {batch_size}\n"
             f"micro_batch_size: {micro_batch_size}\n"
@@ -90,8 +92,9 @@ def train(
             f"prompt template: {prompt_template_name}\n"
         )
     assert (
-        base_model
+        base_model # llama is a decoder-only model
     ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
+    # input processed in batches during inference
     gradient_accumulation_steps = batch_size // micro_batch_size
 
     prompter = Prompter(prompt_template_name)
@@ -144,9 +147,8 @@ def train(
         results = bleu.compute(predictions=predictions, references=labels)
         return {"bleu": results["bleu"]}
 
+    # Tokenize without padding, add eos_token , updates attention mask
     def tokenize(prompt, add_eos_token=True):
-        # there's probably a way to do this with the tokenizer settings
-        # but again, gotta move fast
         result = tokenizer(
             prompt,
             truncation=True,
@@ -166,8 +168,8 @@ def train(
 
         return result
 
+    # Mask input if not train on input
     def generate_and_tokenize_prompt(data_point):
-        # function tokenizes dataset
         full_prompt = prompter.generate_prompt(
             data_point["instruction"],
             data_point["input"],
@@ -182,15 +184,13 @@ def train(
                 user_prompt, add_eos_token=add_eos_token
             )
             user_prompt_len = len(tokenized_user_prompt["input_ids"])
-
             if add_eos_token:
                 user_prompt_len -= 1
-
             tokenized_full_prompt["labels"] = [
                 -100
             ] * user_prompt_len + tokenized_full_prompt["labels"][
                 user_prompt_len:
-            ]  # could be sped up, probably
+            ]  
         return tokenized_full_prompt
 
     model = prepare_model_for_kbit_training(model)
@@ -205,11 +205,21 @@ def train(
     )
     model = get_peft_model(model, config)
 
-    # load dataset
+    '''
     if data_path.endswith(".json") or data_path.endswith(".jsonl"):
         data = load_dataset("json", data_files=data_path)
     else:
         data = load_dataset(data_path)
+    '''
+    data_files = {
+    "train": data_path,
+    "test": val_data_path
+    }
+
+    dataset = load_dataset("json", data_files=data_files) # same loader for json and jsonl 
+    train_data = dataset["train"]
+    val_data = dataset["test"]
+
 
     if resume_from_checkpoint:
         # original comments found on file: 
@@ -258,27 +268,24 @@ def train(
 
     model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
     
-    # preprocesses and tokenizes dataset by calling map() 
+    '''
+    # get data ready for training by calling map() 
+    # Skip if data already tokenized, eos included and input masked 
     if val_set_size > 0:
         train_val = data["train"].train_test_split(
             test_size=val_set_size, shuffle=True, seed=42
         )
         train_data = (
-            # tokenize then map dataset
             train_val["train"].shuffle().map(generate_and_tokenize_prompt)
-            # map already tokenized dataset
         )
         val_data = (
-            # tokenize then map dataset
             train_val["test"].shuffle().map(generate_and_tokenize_prompt)
-            # map already tokenized dataset
         )
     else:
-        # tokenize then map dataset
         train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
-
         val_data = None
-
+    '''
+    
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
@@ -288,27 +295,20 @@ def train(
         model=model,
         train_dataset=train_data,
         eval_dataset=val_data,
-        # add evaluation function
-        compute_metrics=compute_metrics,
-        
+        compute_metrics=compute_metrics, # Evaluation function
         args=transformers.TrainingArguments(
-            # add parallel CPU workers for data loading, depends on hardware limits
-            dataloader_num_workers=4,
+            dataloader_num_workers=4, # add parallel CPU workers for data loading, depends on hardware limit
             per_device_train_batch_size=micro_batch_size,
-            #
             gradient_accumulation_steps=gradient_accumulation_steps,
-            # 
             warmup_steps=100,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
-            # point format
-            fp16=True,
+            fp16=True, # point format
             logging_steps=10,
             optim="adamw_torch",
-            eval_strategy="steps" if val_set_size > 0 else "no",
-            save_strategy="steps",
-            # change to eval per new update 
-            eval_steps=50 if val_set_size > 0 else None,
+            eval_strategy="steps", #if val_set_size > 0 else "no",
+            save_strategy="steps", 
+            eval_steps=50, #if val_set_size > 0 else None, # change to eval per new update, set for more frequent weight saving 
             save_steps=50, # total data / batch size
             output_dir=output_dir,
             save_total_limit=3,
@@ -318,6 +318,7 @@ def train(
             report_to="wandb" if use_wandb else None,
             run_name=wandb_run_name if use_wandb else None,
         ),
+        # pad and batch tokenized data dynamically 
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ),
@@ -334,7 +335,7 @@ def train(
     if torch.__version__ >= "2" and sys.platform != "win32":
         model = torch.compile(model)
 
-    trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+    trainer.train(resume_from_checkpoint=resume_from_checkpoint) # call without input to start training from scratch 
 
     model.save_pretrained(output_dir)
 

@@ -33,6 +33,7 @@ tokenizer = AutoTokenizer.from_pretrained("/Users/louelidrissi/LLM/decapoda-rese
 
 jsonl_file_path = "reduced_training.jsonl"
 testing_jsonl_file_path = "reduced_testing.jsonl"
+train_on_input = True 
 
 def find_max_length(jsonl_path):
     max_length = 0
@@ -55,10 +56,11 @@ def find_max_length(jsonl_path):
                 )
             tokens = tokenizer(prompt, truncation=False)
 
-            # Add EOS token if not present 
-            if tokens["input_ids"][-1] != tokenizer.eos_token_id:
-                tokens["input_ids"].append(tokenizer.eos_token_id)
-                tokens["attention_mask"].append(1)
+            if not train_on_input:
+                print("add eos")
+                add_eos(tokens, cutoff_len=256)
+            else:
+                pass
             
             token_len = len(tokens["input_ids"])
             if token_len > max_length:
@@ -84,25 +86,20 @@ def save_tokenized_jsonl(jsonl_path, output_path, cutoff_len):
                 )
             tokens = tokenizer(prompt, max_length=cutoff_len, truncation=True, padding=False)
             
-            # Add EOS token if not present and include it in attention mask 
-            if tokens["input_ids"][-1] != tokenizer.eos_token_id and len(tokens["input_ids"]) < cutoff_len:
-                tokens["input_ids"].append(tokenizer.eos_token_id)
-                tokens["attention_mask"].append(1)
-
             if not pass_test(prompt, tokens):
                 break
 
-             # Mask input tokens in "labels" with -100 to ignore loss on input part
-            user_prompt_ids = tokenizer(prompt, max_length=cutoff_len, truncation=True, padding=False).input_ids
-            user_len = len(user_prompt_ids)
-            
-            labels = tokens["input_ids"].copy()
-            labels[:user_len] = [-100] * user_len 
+            if not train_on_input:
+                print("masked and eos")
+                add_eos(tokens, cutoff_len)
+                labels = mask_input(prompt, tokens, cutoff_len)
+            else:
+                labels = tokens["input_ids"].copy
 
             tokenized_data = {
                 "input_ids": tokens["input_ids"],
                 "attention_mask": tokens["attention_mask"],
-                "labels": labels,
+                "labels": tokens["input_ids"].copy(),
                 "prompt": prompt
             }
             # fout.write each item from the dictionary as a new line 
@@ -123,25 +120,46 @@ def pass_test(prompt, tokens):
         return False 
     return True
 
+def add_eos(tokens, cutoff_len):
+    # Add EOS token if not present and mark it in attention mask 
+    if tokens["input_ids"][-1] != tokenizer.eos_token_id and len(tokens["input_ids"]) < cutoff_len:
+        tokens["input_ids"].append(tokenizer.eos_token_id)
+        tokens["attention_mask"].append(1)
+    return 
+
+def mask_input(prompt, tokens, cutoff_len):
+    # Mask input tokens in "labels" with -100 to ignore loss on input part
+    user_prompt_ids = tokenizer(prompt, max_length=cutoff_len, truncation=True, padding=False).input_ids
+    user_len = len(user_prompt_ids)
+    
+    labels = tokens["input_ids"].copy()
+    labels[:user_len] = [-100] * user_len 
+    return labels
+
 def find_max_cutoff():
     cutoff_train = find_max_length(jsonl_file_path)
-    print("Max length:",  cutoff_train)
+    #print("Max length:",  cutoff_train)
     cutoff_test = find_max_length(testing_jsonl_file_path)
-    print("Max length:", cutoff_test )
+    #print("Max length:", cutoff_test )
     return max(cutoff_train, cutoff_test)
 
 def tokenize_truncate_training(max_len):
     output_jsonl_file_path = "tokenized_output.jsonl"
     save_tokenized_jsonl(jsonl_file_path,  output_jsonl_file_path, max_len)
     print("done with training")
+    return 
 
 def tokenize_truncate_testing(max_len):
     testing_output_jsonl_file_path = "testing_tokenized_output.jsonl"
     save_tokenized_jsonl(testing_jsonl_file_path,  testing_output_jsonl_file_path, max_len)
     print("done with testing")
+    return 
 
-# extend cutoff length for assurance
-max_cutoff = find_max_cutoff()+3
-print(max_cutoff)
-tokenize_truncate_training(max_cutoff)
-tokenize_truncate_testing(max_cutoff)
+def main():
+    # extend cutoff length for assurance
+    max_cutoff = find_max_cutoff()+3
+    print(max_cutoff)
+    tokenize_truncate_training(max_cutoff)
+    tokenize_truncate_testing(max_cutoff)
+
+main()
