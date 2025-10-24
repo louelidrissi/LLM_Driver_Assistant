@@ -99,7 +99,7 @@ def save_tokenized_jsonl(jsonl_path, output_path, cutoff_len):
             tokenized_data = {
                 "input_ids": tokens["input_ids"],
                 "attention_mask": tokens["attention_mask"],
-                "labels": tokens["input_ids"].copy(),
+                "labels": labels,
                 "prompt": prompt
             }
             # fout.write each item from the dictionary as a new line 
