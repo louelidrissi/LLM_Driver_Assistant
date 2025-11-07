@@ -4,7 +4,9 @@ from typing import List
 
 import fire
 import torch
-import transformers
+import transformers 
+# maybe actually don't need it since already imported llamatokenizer 
+from transformers import AutoTokenizer
 from datasets import load_dataset
 
 """
@@ -36,7 +38,7 @@ def train(
     base_model: str = "",  # the only required argument
     data_path: str = "yahma/alpaca-cleaned",
     val_data_path: str = "",
-    output_dir: str = "./lora-alpaca",
+    output_dir: str = "./lora-alpaca-output",
     # training hyperparams
     batch_size: int = 128,  # 32, 64, 128... . the lower, the noisier gradient would be
     micro_batch_size: int = 4,
@@ -217,22 +219,20 @@ def train(
     }
 
     dataset = load_dataset("json", data_files=data_files) # same loader for json and jsonl 
-    train_data = dataset["train"]
-    val_data = dataset["test"]
-
 
     if resume_from_checkpoint:
         # original comments found on file: 
             # The two files above have a different name depending on how they were saved, but are actually the same.
             # only LoRA model - LoRA config above has to fit
-        checkpoint_bin = os.path.join(resume_from_checkpoint, "pytorch_model.bin")
-        checkpoint_adapter_bin = os.path.join(resume_from_checkpoint, "adapter_model.bin")
+        #checkpoint_bin = os.path.join(resume_from_checkpoint, "pytorch_model.bin")
+        #checkpoint_adapter_bin = os.path.join(resume_from_checkpoint, "adapter_model.bin")
         checkpoint_adapter_safe = os.path.join(resume_from_checkpoint, "adapter_model.safetensors")
         
         # Check the available weights and load them
         # they would be saved under one these names: "pytorch_model.bin", "adapter_model.bin", "adapter_model.safetensors"
         # .bin uploads with torch.load()
         #  and .safe upload with load_file
+        '''
         if os.path.exists(checkpoint_bin):
             #resume_from_checkpoint, "pytorch_model.bin"
             checkpoint_found = True
@@ -245,8 +245,10 @@ def train(
             checkpoint_name = "adapter_model.bin"
             print(f"Restarting from {checkpoint_name}")
             adapters_weights = torch.load(checkpoint_adapter_bin)
+        '''
 
-        elif os.path.exists(checkpoint_adapter_safe):
+
+        if os.path.exists(checkpoint_adapter_safe):
             checkpoint_found = True
             checkpoint_name = "adapter_model.safetensors"
             print(f"Restarting from {checkpoint_name}")
@@ -285,6 +287,8 @@ def train(
         train_data = data["train"].shuffle().map(generate_and_tokenize_prompt)
         val_data = None
     '''
+    train_data = dataset["train"].shuffle()
+    val_data = dataset["test"].shuffle()
     
     if not ddp and torch.cuda.device_count() > 1:
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
@@ -297,7 +301,7 @@ def train(
         eval_dataset=val_data,
         compute_metrics=compute_metrics, # Evaluation function
         args=transformers.TrainingArguments(
-            dataloader_num_workers=4, # add parallel CPU workers for data loading, depends on hardware limit
+            dataloader_num_workers=2, # add parallel CPU workers for data loading, depends on hardware limit
             per_device_train_batch_size=micro_batch_size,
             gradient_accumulation_steps=gradient_accumulation_steps,
             warmup_steps=100,
@@ -312,13 +316,14 @@ def train(
             save_steps=50, # total data / batch size
             output_dir=output_dir,
             save_total_limit=3,
-            load_best_model_at_end=True if val_set_size > 0 else False,
+            load_best_model_at_end=True if val_set_size > 0 else False, # CHEEECKKKKK
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
             report_to="wandb" if use_wandb else None,
             run_name=wandb_run_name if use_wandb else None,
         ),
         # pad and batch tokenized data dynamically 
+        # WHERE DOES THIS COLLECTOR GET HIS TOKENIZER ?? is it initialized earlier ???
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ),
@@ -336,7 +341,14 @@ def train(
         model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=resume_from_checkpoint) # call without input to start training from scratch 
+    
+    # Call train.evaluate 
 
+    # to save pretrained model, tokenizer is needed. 
+    # actually was already initialized
+    # #tokenizer = AutoTokenizer.from_pretrained("/Users/louelidrissi/LLM/decapoda-research-llama-7B-hf", legacy=True, use_fast=False)
+
+    # set output dir to where checkpoints are saved alpaca-lora-output. DOUBLE CHECK
     model.save_pretrained(output_dir)
 
     print(

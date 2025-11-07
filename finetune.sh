@@ -1,0 +1,18 @@
+!python finetune.py \
+  --base_model 'baffo32/decapoda-research-llama-7B-hf' \
+  --data_path './tokenized_output.jsonl' \
+  --val_data_path './testing_tokenized_output.jsonl' \
+  --output_dir './lora-alpaca-output' \
+  --batch_size 64 \
+  --micro_batch_size 4 \
+  --num_epochs 3 \
+  --learning_rate 3e-4 \
+  --cutoff_len 168 \
+  --val_set_size 0 \
+  --lora_r 16 \
+  --lora_alpha 16 \
+  --lora_dropout 0.05 \
+  --lora_target_modules '[q_proj,k_proj,v_proj,o_proj]' \
+  --train_on_inputs True \
+  --group_by_length \
+  --resume_from_checkpoint './lora-alpaca-output/checkpoint-350'
